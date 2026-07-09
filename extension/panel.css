@@ -1,0 +1,135 @@
+/* Claude+ v1 — floating button & panel */
+.cp-fab {
+  position: fixed; right: 22px; bottom: 96px; z-index: 2147483646;
+  width: 48px; height: 48px; border-radius: 50%; border: none;
+  background: #C15F3C; color: #fff; font-size: 22px; cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0,0,0,.28); transition: transform .15s ease;
+}
+.cp-fab:hover { transform: scale(1.08); }
+
+.cp-panel {
+  position: fixed; right: 22px; bottom: 156px; z-index: 2147483646;
+  width: 360px; max-height: 68vh; display: flex; flex-direction: column;
+  background: #ffffff; color: #1a1a1a; border-radius: 14px;
+  box-shadow: 0 10px 34px rgba(0,0,0,.30); overflow: hidden;
+  font-family: inherit; /* claude.ai body 폰트 상속 → 완전 동화 */
+  font-size: 13px; line-height: 1.5;
+}
+.cp-hidden { display: none; }
+
+.cp-head {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 12px; background: #C15F3C; color: #fff;
+}
+.cp-title { font-weight: 700; font-size: 14px; }
+.cp-ib {
+  border: none; background: rgba(255,255,255,.16); color: #fff;
+  width: 26px; height: 26px; border-radius: 7px; margin-left: 5px;
+  cursor: pointer; font-size: 13px;
+}
+.cp-ib:hover { background: rgba(255,255,255,.3); }
+
+.cp-body { overflow-y: auto; padding: 10px; }
+.cp-empty { padding: 26px 10px; text-align: center; color: #777; }
+
+.cp-card {
+  border: 1px solid #e6e0d8; border-radius: 10px;
+  padding: 10px 12px; margin-bottom: 8px; background: #faf8f5;
+}
+.cp-card.cp-off { opacity: .55; }
+.cp-card-top { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.cp-badges { display: flex; gap: 4px; flex-shrink: 0; }
+.cp-badge, .cp-st {
+  font-size: 10.5px; padding: 1px 7px; border-radius: 999px;
+  background: #eee3d9; color: #7a4a2f; white-space: nowrap;
+}
+.cp-st-notified { background: #dff2e0; color: #1d7a33; }
+.cp-st-skipped  { background: #eef; color: #445; }
+.cp-st-error    { background: #fde3e3; color: #b02a2a; }
+.cp-sub { color: #7a7a7a; font-size: 12px; margin-top: 2px; }
+
+.cp-result { margin-top: 6px; }
+.cp-result summary { cursor: pointer; color: #9a5b3c; font-size: 12px; }
+.cp-result pre {
+  white-space: pre-wrap; background: #fff; border: 1px solid #eee;
+  border-radius: 8px; padding: 8px; max-height: 160px; overflow-y: auto;
+  font-size: 12px;
+}
+
+.cp-row { display: flex; gap: 6px; margin-top: 8px; }
+.cp-btn {
+  border: 1px solid #ddd2c6; background: #fff; border-radius: 8px;
+  padding: 5px 10px; cursor: pointer; font-size: 12px;
+}
+.cp-btn:hover { background: #f4ede4; }
+.cp-primary { background: #C15F3C; border-color: #C15F3C; color: #fff; }
+.cp-primary:hover { background: #a94f30; }
+.cp-danger:hover { background: #fde3e3; border-color: #e3b1b1; }
+
+.cp-form label { display: block; margin-bottom: 9px; font-weight: 600; }
+.cp-form input, .cp-form textarea, .cp-form select {
+  display: block; width: 100%; box-sizing: border-box; margin-top: 3px;
+  border: 1px solid #ddd2c6; border-radius: 8px; padding: 7px 9px;
+  font: inherit; font-weight: 400; background: #fff; color: #1a1a1a;
+}
+.cp-note { color: #888; font-size: 11.5px; margin-bottom: 8px; }
+.cp-note code { background: #f3ece3; padding: 0 4px; border-radius: 4px; }
+
+/* claude.ai 실제 테마(배경 휘도)를 JS가 판정해 .cp-dark 클래스로 적용 */
+.cp-panel.cp-dark { background: #2b2a27; color: #ece7df; }
+.cp-dark .cp-card { background: #35332f; border-color: #4a463f; }
+.cp-dark .cp-sub { color: #a9a49b; }
+.cp-dark .cp-result pre { background: #26251f; border-color: #45413a; color: #ded8cd; }
+.cp-dark .cp-btn { background: #3d3a35; border-color: #55504a; color: #ece7df; }
+.cp-dark .cp-btn:hover { background: #4a463f; }
+.cp-dark .cp-btn.cp-primary { background: #C15F3C; border-color: #C15F3C; color: #fff; }
+.cp-dark .cp-form input, .cp-dark .cp-form textarea, .cp-dark .cp-form select {
+  background: #3d3a35; border-color: #55504a; color: #ece7df;
+}
+.cp-dark .cp-empty { color: #a9a49b; }
+.cp-dark .cp-badge { background: #4a4038; color: #e0c9b8; }
+.cp-dark .cp-st-notified { background: #2c4530; color: #9fd8a8; }
+.cp-dark .cp-st-skipped  { background: #3a3d4a; color: #b9c0d8; }
+.cp-dark .cp-st-error    { background: #4a2f2f; color: #e8a0a0; }
+
+/* ---------- 대화 네비게이터 (GPT 스타일 우측 바) ---------- */
+.cpn-rail {
+  position: fixed; right: 8px; top: 50%; transform: translateY(-50%);
+  z-index: 2147483645; /* 패널보다 한 단계 아래 */
+  display: flex; flex-direction: column; align-items: flex-end;
+  gap: var(--cpn-gap, 10px);
+  max-height: 68vh;
+  overflow-y: auto; scrollbar-width: none; /* 장문 대화: 휠 스크롤 가능, 바는 숨김 */
+  padding: 6px 4px;
+}
+.cpn-rail::-webkit-scrollbar { display: none; }
+.cpn-hidden { display: none; }
+.cpn-tick {
+  /* 시각적 바는 3px이지만 히트 영역은 11px (터치/정밀 클릭 대응) */
+  width: 18px; height: 11px; flex-shrink: 0;
+  border: none; border-radius: 2px;
+  padding: 4px 0; background: rgba(120, 113, 103, 0.38);
+  background-clip: content-box;
+  cursor: pointer;
+  transition: width .15s ease, background-color .15s ease;
+}
+.cpn-tick:hover { width: 26px; background-color: rgba(120, 113, 103, 0.7); }
+.cpn-tick.cpn-active { width: 26px; background-color: #1a1915; }
+.cpn-rail.cpn-dark .cpn-tick { background-color: rgba(210, 205, 195, 0.32); }
+.cpn-rail.cpn-dark .cpn-tick:hover { background-color: rgba(210, 205, 195, 0.65); }
+.cpn-rail.cpn-dark .cpn-tick.cpn-active { background-color: #f2efe9; }
+.cpn-tick:focus-visible { outline: 2px solid #C15F3C; outline-offset: 2px; }
+
+.cpn-tip {
+  position: fixed; z-index: 2147483646;
+  max-width: 320px; padding: 6px 10px; border-radius: 8px;
+  background: #1a1915; color: #f2efe9;
+  font-family: inherit; font-size: 12px; line-height: 1.45;
+  box-shadow: 0 4px 16px rgba(0,0,0,.25);
+  pointer-events: none;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cp-fab, .cpn-tick { transition: none; }
+}

@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "Claude+ (자동화 패널)",
+  "version": "1.2",
+  "description": "claude.ai에 자동화 관리 패널(플로팅 버튼)과 GPT 스타일 대화 네비게이터 바를 추가합니다.",
+  "permissions": [
+    "storage"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://claude.ai/*",
+        "https://www.claude.ai/*"
+      ],
+      "js": [
+        "content.js",
+        "navigator.js"
+      ],
+      "css": [
+        "panel.css"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}

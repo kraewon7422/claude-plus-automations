@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="../extension/panel.css">
+<style>
+  /* ---- claude.ai 라이트 테마 근사 재현 ---- */
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: #262624; color: #ece7df;
+    font-family: "Noto Sans CJK KR", "Noto Sans KR", sans-serif;
+    height: 900px; overflow: hidden;
+  }
+  .chat { max-width: 720px; margin: 0 auto; padding: 40px 24px 140px; }
+  .user-msg {
+    background: #3a3833; border-radius: 16px; padding: 12px 16px;
+    margin: 26px 0 10px auto; max-width: 78%; font-size: 15px;
+  }
+  .ai-msg { padding: 6px 2px; font-size: 15px; line-height: 1.7; color: #d6d1c7; }
+  .inputbar {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+    width: 680px; background: #30302c; border: 1px solid #45423b;
+    border-radius: 18px; padding: 16px 18px; color: #8d887e;
+    box-shadow: 0 2px 10px rgba(0,0,0,.05); font-size: 15px;
+  }
+  /* 정적 렌더용: 패널 강제 표시 */
+  .cp-panel { display: flex !important; }
+</style>
+</head>
+<body>
+  <div class="chat">
+    <div class="user-msg">GPT 시스템 프롬프트랑 네 실행 파일 차이점 비교해줘</div>
+    <div class="ai-msg">흥미로운 자료네요. GPT-5.5 Thinking의 시스템 프롬프트 전체를 훑어봤습니다. 설계 철학 자체가 꽤 다릅니다...</div>
+    <div class="user-msg">GPT의 장점을 Claude에 이식하고 싶어. 플로팅 버튼으로 열리게 해줘</div>
+    <div class="ai-msg">Claude+ v1 완성했습니다. 서버 기동 → REST 인증 → MCP initialize까지 검증을 마쳤습니다...</div>
+    <div class="user-msg">네비게이터 바도 설계해줘. 에러 체크하고 UI 동화도 확인해줘</div>
+    <div class="ai-msg">스킬 확인했습니다. 이번 작업의 디자인 방향은 호스트와의 완전 동화이므로...</div>
+  </div>
+  <div class="inputbar">Claude에게 답장하기…</div>
+
+  <!-- ===== Claude+ 오버레이 (확장이 주입하는 것과 동일 마크업) ===== -->
+  <button class="cp-fab">⚡</button>
+
+  <div class="cp-panel cp-dark">
+    <div class="cp-head">
+      <span class="cp-title">⚡ Claude+ 자동화</span>
+      <span class="cp-head-btns">
+        <button class="cp-ib">＋</button><button class="cp-ib">↻</button>
+        <button class="cp-ib">⚙</button><button class="cp-ib">✕</button>
+      </span>
+    </div>
+    <div class="cp-body">
+      <div class="cp-card">
+        <div class="cp-card-top"><b>아침 시장 브리핑</b>
+          <span class="cp-badges"><span class="cp-badge">정시</span>
+          <span class="cp-st cp-st-notified">알림됨</span></span></div>
+        <div class="cp-sub">cron 0 7 * * * · 밤사이 반도체·V2X 뉴스 요약</div>
+        <div class="cp-row">
+          <button class="cp-btn">⏸ 끄기</button>
+          <button class="cp-btn">⚡ 지금 실행</button>
+          <button class="cp-btn cp-danger">🗑</button>
+        </div>
+      </div>
+      <div class="cp-card">
+        <div class="cp-card-top"><b>타호 적설 감시</b>
+          <span class="cp-badges"><span class="cp-badge">조건감시</span>
+          <span class="cp-st cp-st-skipped">조건미충족</span></span></div>
+        <div class="cp-sub">180분마다 · 눈 예보 시에만 알림</div>
+        <div class="cp-row">
+          <button class="cp-btn">⏸ 끄기</button>
+          <button class="cp-btn">⚡ 지금 실행</button>
+          <button class="cp-btn cp-danger">🗑</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 네비게이터: 틱 5개 + 활성 1개 + 툴팁 -->
+  <div class="cpn-rail cpn-dark" style="--cpn-gap:10px">
+    <button class="cpn-tick"></button>
+    <button class="cpn-tick"></button>
+    <button class="cpn-tick"></button>
+    <button class="cpn-tick" style="width:26px;background:rgba(210,205,195,0.65)"></button>
+    <button class="cpn-tick cpn-active"></button>
+  </div>
+  <div class="cpn-tip" style="top:462px; right:44px;">4. GPT의 장점을 Claude에 이식하고 싶어. 플로팅 버튼으로 열리게…</div>
+</body>
+</html>
