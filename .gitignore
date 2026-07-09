@@ -3,6 +3,11 @@
 *.db
 claude_plus.db
 
+# Machine-specific launchers (hardcoded local paths)
+start-claude-plus.ps1
+start-claude-plus.vbs
+_boot_*.txt
+
 # Python
 venv/
 .venv/

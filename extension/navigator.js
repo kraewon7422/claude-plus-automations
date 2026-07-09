@@ -1,43 +1,22 @@
-/* Claude+ v1.1 — 대화 네비게이터 (GPT 스타일 우측 바)
- * - 사용자 프롬프트마다 틱(가로 바) 생성, 클릭 시 해당 메시지로 스크롤
- * - 호버 시 프롬프트 미리보기 툴팁, 현재 화면 위치의 틱 강조
- * - claude.ai DOM 변경에 대비한 다중 셀렉터 폴백 + SPA 라우팅 대응
- * - claude.ai의 실제 배경색을 읽어 라이트/다크 자동 동화
+/* Claude+ v1.4 — 대화 네비게이터 (구조화 버전)
+ * 데이터 출처를 claude.ai 내부 대화 API로 교체:
+ *   - 가상 스크롤(off-screen 메시지 언마운트)로 DOM 스크래핑이 개수를 놓치던 문제 해결
+ *   - 틱은 항상 '전체 프롬프트 수'만큼 생성, 최대 5개만 보이고 부드럽게 슬라이드
+ *   - 클릭 이동: 알려진 Y면 즉시 부드럽게, 미발견 프롬프트는 추정→정렬(snap)
+ *   - 활성 표시: 현재 렌더된 메시지를 API 순서에 정렬해 판정(가상 스크롤 대응)
+ *   - API 실패 시 렌더된 메시지 기반(구버전 방식)으로 자동 폴백
  */
 (() => {
   if (window.__claudePlusNavLoaded) return;
   window.__claudePlusNavLoaded = true;
 
-  // ---------- claude.ai 사용자 메시지 탐지 (우선순위 폴백 체인)
-  const USER_MSG_SELECTORS = [
-    '[data-testid="user-message"]',
-    '.font-user-message',
-    'div[class*="user-message"]',
-  ];
-  function findUserMessages() {
-    for (const sel of USER_MSG_SELECTORS) {
-      try {
-        const els = [...document.querySelectorAll(sel)];
-        if (els.length) return els;
-      } catch (_) { /* invalid selector 방어 */ }
-    }
-    return [];
-  }
+  // ---------- 레일 상수 (panel.css와 일치)
+  const MAX_VISIBLE = 5, TICK_H = 11, GAP = 9, RAIL_PAD = 12;
+  const USER_SEL = '[data-testid="user-message"], .font-user-message';
+  const norm = (t) => (t || "").replace(/\s+/g, " ").trim();
+  const keyOf = (t) => norm(t).slice(0, 40);
 
-  // ---------- 테마 동화: claude.ai 실제 배경 밝기로 다크 판정
-  function isDarkTheme() {
-    try {
-      const probe = document.querySelector("main") || document.body;
-      const bg = getComputedStyle(probe).backgroundColor
-        || getComputedStyle(document.body).backgroundColor;
-      const m = bg && bg.match(/(\d+(?:\.\d+)?)/g);
-      if (!m || m.length < 3) return false;
-      const [r, g, b] = m.map(Number);
-      return 0.2126 * r + 0.7152 * g + 0.0722 * b < 128; // 상대 휘도
-    } catch (_) { return false; }
-  }
-
-  // ---------- 루트/틱 구성
+  // ---------- UI 루트
   const rail = document.createElement("div");
   rail.className = "cpn-rail cpn-hidden";
   rail.setAttribute("role", "navigation");
@@ -45,62 +24,106 @@
   const tip = document.createElement("div");
   tip.className = "cpn-tip cpn-hidden";
   document.body.append(rail, tip);
+  rail.style.setProperty("--cpn-gap", GAP + "px");
+  rail.style.maxHeight = (MAX_VISIBLE * TICK_H + (MAX_VISIBLE - 1) * GAP + RAIL_PAD) + "px";
 
-  let msgs = [];           // 현재 추적 중인 사용자 메시지 요소들
-  let io = null;           // IntersectionObserver
-  let activeIdx = -1;
-
-  const preview = (elm) => {
-    const t = (elm.textContent || "").replace(/\s+/g, " ").trim();
-    return t.length > 72 ? t.slice(0, 72) + "…" : t || "(빈 메시지)";
-  };
-
-  function setActive(idx) {
-    if (idx === activeIdx) return;
-    activeIdx = idx;
-    [...rail.children].forEach((c, i) => c.classList.toggle("cpn-active", i === idx));
+  function isDarkTheme() {
+    try {
+      const p = document.querySelector("main") || document.body;
+      const m = (getComputedStyle(p).backgroundColor || "").match(/(\d+(?:\.\d+)?)/g);
+      if (!m || m.length < 3) return false;
+      const [r, g, b] = m.map(Number);
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b < 128;
+    } catch (_) { return false; }
   }
 
-  function build() {
-    const found = findUserMessages();
-    // 사용자 메시지 2개 미만이거나 대화 화면이 아니면 숨김
-    if (found.length < 2) {
-      rail.classList.add("cpn-hidden");
-      tip.classList.add("cpn-hidden");
-      msgs = found;
-      return;
+  // ---------- 상태
+  let orgId = null;
+  let prompts = [];          // [{key,text}] — API(또는 렌더) 순서
+  const yById = new Map();   // promptIndex -> Y(px, container 기준). 발견되는 대로 채움
+  let container = null;
+  let activeIdx = -1;
+  let scrollHandler = null;
+
+  function findContainer() {
+    let e = document.querySelector(USER_SEL);
+    while (e && e !== document.body) {
+      const s = getComputedStyle(e);
+      if (/(auto|scroll)/.test(s.overflowY) && e.scrollHeight > e.clientHeight + 50) return e;
+      e = e.parentElement;
     }
-    // 개수 동일 + 동일 노드면 재구축 생략 (스트리밍 중 불필요 리빌드 방지)
-    if (found.length === msgs.length &&
-        found[0] === msgs[0] && found[found.length - 1] === msgs[msgs.length - 1]) {
-      rail.classList.remove("cpn-hidden");
-      return;
+    let best = null;
+    document.querySelectorAll("div").forEach((el) => {
+      const s = getComputedStyle(el);
+      if (/(auto|scroll)/.test(s.overflowY) && el.scrollHeight > el.clientHeight + 200) {
+        if (!best || el.scrollHeight > best.scrollHeight) best = el;
+      }
+    });
+    return best || document.scrollingElement;
+  }
+  const contTop = () => (container ? container.getBoundingClientRect().top : 0);
+  const maxScroll = () => (container ? Math.max(0, container.scrollHeight - container.clientHeight) : 0);
+  const yOf = (el) => Math.round(el.getBoundingClientRect().top - contTop() + container.scrollTop);
+
+  // ---------- API로 전체 프롬프트 목록 확보
+  async function fetchPrompts() {
+    const cid = (location.pathname.split("/chat/")[1] || "").split(/[/?#]/)[0];
+    if (!cid) return null;
+    if (!orgId) {
+      try {
+        const orgs = await fetch("/api/organizations", { headers: { accept: "application/json" } }).then((r) => r.json());
+        const o = Array.isArray(orgs) ? (orgs.find((x) => x.uuid) || orgs[0]) : orgs;
+        orgId = o && o.uuid;
+      } catch (_) { /* 아래에서 폴백 */ }
     }
-    msgs = found;
-    activeIdx = -1; // 리빌드 시 활성 인덱스 초기화 (미초기화 시 setActive 조기 반환 버그)
+    if (!orgId) return null;
+    const url = `/api/organizations/${orgId}/chat_conversations/${cid}` +
+      `?tree=True&rendering_mode=messages&render_all_tools=false`;
+    const data = await fetch(url, { headers: { accept: "application/json" } }).then((r) => r.json());
+    const msgs = data.chat_messages || data.messages || [];
+    const humans = msgs.filter((m) => m.sender === "human" || m.role === "user");
+    return humans.map((h) => {
+      const txt = h.text || (Array.isArray(h.content) ? h.content.map((c) => c.text || "").join(" ") : "") || "";
+      return { key: keyOf(txt), text: norm(txt) };
+    });
+  }
+
+  // ---------- 렌더된 메시지를 API 순서에 정렬 (가상 스크롤 대응) + Y 수집
+  function alignRendered() {
+    const els = [...document.querySelectorAll(USER_SEL)];
+    if (!els.length || !prompts.length) return [];
+    const rk = els.map((el) => ({ el, key: keyOf(el.textContent), y: yOf(el) }));
+    // 렌더 블록은 연속 구간 → prompts[s..]가 rk에 가장 잘 맞는 s 탐색
+    let bestS = -1, bestScore = 0;
+    for (let s = 0; s < prompts.length; s++) {
+      let score = 0;
+      for (let k = 0; k < rk.length && s + k < prompts.length; k++) {
+        if (prompts[s + k].key === rk[k].key) score++;
+      }
+      if (score > bestScore) { bestScore = score; bestS = s; }
+    }
+    if (bestS < 0) return [];
+    const map = [];
+    for (let k = 0; k < rk.length && bestS + k < prompts.length; k++) {
+      const pi = bestS + k;
+      yById.set(pi, rk[k].y);
+      map.push({ promptIdx: pi, el: rk[k].el, y: rk[k].y });
+    }
+    return map;
+  }
+
+  // ---------- 틱 렌더
+  function renderTicks() {
     rail.classList.toggle("cpn-dark", isDarkTheme());
     rail.innerHTML = "";
-    if (io) io.disconnect();
-
-    // 틱 개수에 따른 간격 자동 축소 (틱 히트영역 11px 기준, 최대 68vh 안에 수용)
-    const maxPx = window.innerHeight * 0.68;
-    const gap = Math.max(2, Math.min(14, Math.floor(maxPx / msgs.length) - 11));
-    rail.style.setProperty("--cpn-gap", gap + "px");
-
-    msgs.forEach((m, i) => {
+    prompts.forEach((p, i) => {
       const tick = document.createElement("button");
       tick.className = "cpn-tick";
       tick.setAttribute("aria-label", `프롬프트 ${i + 1}로 이동`);
-      tick.addEventListener("click", () => {
-        try {
-          m.scrollIntoView({ behavior: "smooth", block: "start" });
-        } catch (_) {
-          m.scrollIntoView(); // smooth 미지원 방어
-        }
-        setActive(i);
-      });
+      tick.addEventListener("click", () => goTo(i));
       tick.addEventListener("mouseenter", () => {
-        tip.textContent = `${i + 1}. ${preview(m)}`;
+        const shown = p.text.length > 72 ? p.text.slice(0, 72) + "…" : (p.text || "(빈 메시지)");
+        tip.textContent = `${i + 1}. ${shown}`;
         const r = tick.getBoundingClientRect();
         tip.style.top = Math.max(8, r.top + r.height / 2 - 14) + "px";
         tip.style.right = (window.innerWidth - r.left + 10) + "px";
@@ -109,42 +132,122 @@
       tick.addEventListener("mouseleave", () => tip.classList.add("cpn-hidden"));
       rail.append(tick);
     });
-    rail.classList.remove("cpn-hidden");
-
-    // 현재 위치 강조: 화면 상단 40% 지점에 걸린 사용자 메시지를 활성 처리
-    io = new IntersectionObserver(
-      (entries) => {
-        for (const e of entries) {
-          if (e.isIntersecting) setActive(msgs.indexOf(e.target));
-        }
-      },
-      { rootMargin: "-10% 0px -60% 0px", threshold: 0 }
-    );
-    msgs.forEach((m) => io.observe(m));
+    rail.classList.toggle("cpn-hidden", prompts.length < 2);
   }
 
-  // ---------- 리빌드 트리거: DOM 변화(디바운스) + SPA 라우팅 + 리사이즈
-  let debounceTimer = null;
-  let lastHref = location.href;
-  const scheduleBuild = () => {
-    clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(build, 400);
-  };
+  // 활성 틱을 레일 중앙으로 부드럽게 → 틱이 위/아래로 매끄럽게 이동
+  function scrollRailToActive() {
+    const t = rail.children[activeIdx];
+    if (!t) return;
+    const target = t.offsetTop - (rail.clientHeight - t.offsetHeight) / 2;
+    const mx = rail.scrollHeight - rail.clientHeight;
+    rail.scrollTo({ top: Math.max(0, Math.min(target, mx)), behavior: "smooth" });
+  }
+  function setActive(i) {
+    if (i === activeIdx || i < 0) return;
+    activeIdx = i;
+    [...rail.children].forEach((c, k) => c.classList.toggle("cpn-active", k === i));
+    scrollRailToActive();
+  }
 
-  // 주의: MV3 콘텐츠 스크립트는 isolated world라 페이지(React 라우터)의
-  // history.pushState 호출을 패치로 가로챌 수 없다.
-  // → MutationObserver 콜백에서 URL 변화를 직접 감지해 강제 재구축한다.
-  const mo = new MutationObserver(() => {
-    if (location.href !== lastHref) {
-      lastHref = location.href;
-      msgs = []; // 대화 전환 → 유령 틱 방지 위해 강제 재구축
+  // ---------- 활성 판정: 뷰포트 상단(15%)에 가장 가까운 렌더 메시지
+  function updateActiveFromView() {
+    if (!container) return;
+    const map = alignRendered();
+    if (!map.length) return;
+    const line = contTop() + container.clientHeight * 0.15;
+    let cur = map[0];
+    for (const m of map) {
+      if (m.el.getBoundingClientRect().top <= line) cur = m; else break;
     }
-    scheduleBuild();
-  });
+    setActive(cur.promptIdx);
+  }
+
+  // ---------- 추정 Y (알려진 앵커로 보간, 없으면 비례)
+  function estimateY(i) {
+    const anchors = [...yById.entries()].map(([idx, y]) => ({ idx, y })).sort((a, b) => a.idx - b.idx);
+    if (!anchors.some((a) => a.idx === 0)) anchors.unshift({ idx: 0, y: 0 });
+    let lo = null, hi = null;
+    for (const a of anchors) { if (a.idx <= i) lo = a; if (a.idx >= i && !hi) hi = a; }
+    if (lo && hi && hi.idx !== lo.idx) return lo.y + (hi.y - lo.y) * ((i - lo.idx) / (hi.idx - lo.idx));
+    if (lo && lo.idx > 0) return Math.min(maxScroll(), lo.y + (lo.y / lo.idx) * (i - lo.idx));
+    return Math.min(maxScroll(), (i / Math.max(1, prompts.length - 1)) * maxScroll());
+  }
+
+  // ---------- 특정 프롬프트로 이동 (미발견이면 추정→정렬)
+  let seeking = false;
+  async function goTo(i) {
+    setActive(i);                       // 레일은 즉시 부드럽게 슬라이드
+    if (!container) container = findContainer();
+    if (yById.has(i)) { container.scrollTo({ top: Math.max(0, yById.get(i) - 12), behavior: "smooth" }); return; }
+    if (seeking) return;
+    seeking = true;
+    try {
+      let est = estimateY(i);
+      for (let tries = 0; tries < 12; tries++) {
+        container.scrollTop = est;                       // 빠른 탐색(즉시 점프)
+        await new Promise((r) => setTimeout(r, 150));
+        const map = alignRendered();                     // 렌더된 것 정렬 + Y 수집
+        if (yById.has(i)) {                              // 목표가 마운트됨 → 정확히 안착
+          container.scrollTo({ top: Math.max(0, yById.get(i) - 12), behavior: "smooth" });
+          break;
+        }
+        const screen = container.clientHeight * 0.85;
+        // 사용자 메시지가 하나도 안 보이면(=긴 답변 구간에 착지) 프롬프트는 위쪽에 있음 → 위로
+        if (!map.length) { est = Math.max(0, est - screen); continue; }
+        const lo = map[0].promptIdx, hi = map[map.length - 1].promptIdx;
+        if (i < lo) est = Math.max(0, est - screen);
+        else est = Math.min(maxScroll(), est + screen);  // i > hi (범위 내면 위 has(i)에서 처리)
+      }
+    } catch (_) { /* 무시 */ }
+    seeking = false;
+  }
+
+  // ---------- 로드/재로드
+  let reloadTimer = null;
+  async function reload() {
+    container = findContainer();
+    let list = null;
+    try { list = await fetchPrompts(); } catch (_) { list = null; }
+    if (!list) {
+      // 폴백: 렌더된 메시지 기반 (구버전 동작)
+      const els = [...document.querySelectorAll(USER_SEL)]
+        .map((el) => ({ el, key: keyOf(el.textContent), text: norm(el.textContent), y: yOf(el) }))
+        .sort((a, b) => a.y - b.y);
+      prompts = els.map((e) => ({ key: e.key, text: e.text }));
+      yById.clear();
+      els.forEach((e, i) => yById.set(i, e.y));
+    } else {
+      prompts = list;
+      yById.clear();
+    }
+    activeIdx = -1;
+    renderTicks();
+    // 스크롤 활성 추적 재등록
+    if (scrollHandler && container) container.removeEventListener("scroll", scrollHandler);
+    let raf = null;
+    scrollHandler = () => { if (raf) return; raf = requestAnimationFrame(() => { raf = null; updateActiveFromView(); }); };
+    if (container) container.addEventListener("scroll", scrollHandler, { passive: true });
+    updateActiveFromView();
+  }
+  const scheduleReload = () => { clearTimeout(reloadTimer); reloadTimer = setTimeout(reload, 500); };
+
+  // ---------- 트리거: URL 변화(대화 전환) + 새 메시지 감지 (디바운스)
+  let lastHref = location.href;
+  let mutTimer = null;
+  function onMutate() {
+    if (location.href !== lastHref) { lastHref = location.href; scheduleReload(); return; }
+    if (!prompts.length) { scheduleReload(); return; }
+    // 목록에 없는 사용자 메시지가 렌더됐다면(새 프롬프트 전송) 재로드
+    for (const el of document.querySelectorAll(USER_SEL)) {
+      if (!prompts.some((p) => p.key === keyOf(el.textContent))) { scheduleReload(); return; }
+    }
+    updateActiveFromView();
+  }
+  const mo = new MutationObserver(() => { clearTimeout(mutTimer); mutTimer = setTimeout(onMutate, 250); });
   mo.observe(document.body, { childList: true, subtree: true });
+  window.addEventListener("popstate", scheduleReload);
+  window.addEventListener("resize", () => updateActiveFromView());
 
-  window.addEventListener("popstate", () => { msgs = []; scheduleBuild(); });
-  window.addEventListener("resize", scheduleBuild);
-
-  scheduleBuild();
+  scheduleReload();
 })();

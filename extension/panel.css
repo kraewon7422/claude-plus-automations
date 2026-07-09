@@ -1,6 +1,6 @@
 /* Claude+ v1 — floating button & panel */
 .cp-fab {
-  position: fixed; right: 22px; bottom: 96px; z-index: 2147483646;
+  position: fixed; right: 22px; bottom: 24px; z-index: 2147483646;
   width: 48px; height: 48px; border-radius: 50%; border: none;
   background: #C15F3C; color: #fff; font-size: 22px; cursor: pointer;
   box-shadow: 0 4px 14px rgba(0,0,0,.28); transition: transform .15s ease;
@@ -8,7 +8,7 @@
 .cp-fab:hover { transform: scale(1.08); }
 
 .cp-panel {
-  position: fixed; right: 22px; bottom: 156px; z-index: 2147483646;
+  position: fixed; right: 22px; bottom: 84px; z-index: 2147483646;
   width: 360px; max-height: 68vh; display: flex; flex-direction: column;
   background: #ffffff; color: #1a1a1a; border-radius: 14px;
   box-shadow: 0 10px 34px rgba(0,0,0,.30); overflow: hidden;
@@ -97,9 +97,11 @@
   position: fixed; right: 8px; top: 50%; transform: translateY(-50%);
   z-index: 2147483645; /* 패널보다 한 단계 아래 */
   display: flex; flex-direction: column; align-items: flex-end;
-  gap: var(--cpn-gap, 10px);
+  gap: var(--cpn-gap, 9px);
+  /* max-height는 navigator.js가 '틱 5개 높이'로 고정 설정 */
   max-height: 68vh;
-  overflow-y: auto; scrollbar-width: none; /* 장문 대화: 휠 스크롤 가능, 바는 숨김 */
+  overflow-y: auto; scrollbar-width: none; /* 5개 초과 시 부드럽게 스크롤, 바는 숨김 */
+  scroll-behavior: smooth;                 /* 틱이 위/아래로 매끄럽게 이동 */
   padding: 6px 4px;
 }
 .cpn-rail::-webkit-scrollbar { display: none; }
